@@ -1,0 +1,55 @@
+---
+# Delegates to the shared definition in 4cloudguru/shared-workflows.
+#
+# This was a 514-line local copy. SEVENTEEN repositories carried one, 263-716
+# lines each, fifteen textually distinct -- but only SIX had distinct step
+# sequences, and the set of repositories checked out is IDENTICAL in all sixteen
+# consumers. The variation was ordering, prose, and drift.
+#
+# The drift was not harmless:
+#
+#   - azure-pipelines-terraform sat on actions/checkout v6.0.3 in EIGHTEEN
+#     places inside its copy while every other repo was on v7.0.1.
+#   - 4cloudguru/cloud-suite-ui replayed origin/main instead of the pull
+#     request, because its self-overwrite path came from the repository NAME and
+#     stopped matching its scope.json directory when that repo was renamed. Its
+#     gate was green on code it had never read.
+#   - FIFTEEN of the seventeen ran repo-committed gate scripts from sixteen
+#     repositories while still holding a live read token for the private
+#     security-orchestration repo. Only release-docs revoked it first.
+#
+# The shared definition resolves the scope directory from scope.json rather than
+# guessing it, fails hard if the caller is not in scope, and revokes the token
+# before any checked-out code runs.
+#
+# TRIGGERS AND CONCURRENCY STAY HERE. They decide when THIS repository's replay
+# runs, and the scheduled central run cannot block a merge while this copy can --
+# which is the whole reason each repo hosts one. Concurrency must NOT also be
+# declared in the shared definition: a called workflow sharing its caller's
+# group queues behind the caller and the run never starts.
+#
+# PINNED BY SHA. `vars.SUITE_READ_APP_ID` resolves against THIS repository, so
+# nothing about the App installation moves.
+name: signature-replay
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signature-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    uses: 4cloudguru/shared-workflows/.github/workflows/signature-replay.yml@3dac549c7e4fe4a0dc54aaf9ed187b6da2c6eab9 # v1.15.0
+    # Exactly one secret, named. NOT `secrets: inherit`.
+    secrets:
+      SUITE_READ_APP_KEY: ${{ secrets.SUITE_READ_APP_KEY }}
